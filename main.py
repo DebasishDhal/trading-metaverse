@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 # from .routers import users, outposts, trades, transports
-from backend.app.routers import users, outposts, trades, transports
+from backend.app.routers import users, outposts, trades, transports, auth
 
 app = FastAPI(
     title="Trading Outpost API",
@@ -23,6 +23,7 @@ app.add_middleware(
 )
 
 # Register Routers
+app.include_router(auth.router)
 app.include_router(outposts.router)
 app.include_router(trades.router)
 app.include_router(users.router)

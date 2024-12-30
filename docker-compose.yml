@@ -1,0 +1,42 @@
+version: '3.10.11'
+
+services:
+  backend-metaverse:
+    build: 
+      context: .
+      dockerfile: Dockerfile  # Use the Dockerfile in the current directory
+    ports:
+      - "8004:8000"  # Expose port 8004 on host to port 8000 in the container
+    command: uvicorn main:app --host 0.0.0.0 --reload      
+    environment:
+      - MONGODB_URL=mongodb://mongodb-metaverse:27017
+      - DATABASE_NAME=trading_outpost
+    volumes:
+      - .:/app  # Mount the current directory to /app in the container
+    depends_on:
+      - mongodb-metaverse  # Ensure MongoDB starts before the backend
+    networks:
+      - metaverse_network
+
+  mongodb-metaverse:
+    image: mongo:latest
+    ports:
+      - "27017:27017"  # Expose MongoDB on port 27017. Decided not to use another port.
+    container_name: mongodb-metaverse
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: user
+      MONGO_INITDB_ROOT_PASSWORD: root
+    volumes:
+      - mongodb_data:/data/db  # Use a volume for persistent MongoDB data
+    networks:
+      - metaverse_network
+
+networks:
+  metaverse_network:
+    driver: bridge  # Create a bridge network to connect the backend and MongoDB
+
+volumes:
+  mongodb_data:  
+    driver: local
+  static_data:
+    driver: local

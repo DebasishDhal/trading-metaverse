@@ -23,12 +23,20 @@ var/
 /backend/dummy_folder
 # Environment variables
 .env
+/tests
+
+#Github
+.gitignore
+
+#Readme
+help.md
+Plan.md
 
 # Docker
 .docker/
 mongodb_data/
-Dockerfile
-docker-compose.yml
+# Dockerfile
+# docker-compose.yml
 
 # IDE
 .idea/
