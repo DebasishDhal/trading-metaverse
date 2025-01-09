@@ -107,4 +107,4 @@ async def refresh_token(refresh_token: str):
         return JSONResponse(status_code=401, detail="Invalid refresh token")
 
     access_token = create_access_token(data={"sub": username})
-    return {"access_token": access_token, "token_type": "bearer"}
+    return JSONResponse(status_code=200, content={"access_token": access_token, "token_type": "bearer"})

@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, UploadFile, File, Form
 
 from backend.app.utils.users_utils import UserSignupSchema, UserLoginSchema, generate_uuid
 from backend.app.utils.mongo_utils import mongo_client
@@ -10,7 +10,7 @@ from backend.app.utils.security_utils import (
     decode_token
 )
 from fastapi.responses import JSONResponse
-
+import json
 import os
 from dotenv import load_dotenv
 import datetime, time
@@ -52,3 +52,81 @@ async def get_user(user_id = '', username = ''):
         return JSONResponse(status_code=404, content={"message": "User not found"})
     
     return JSONResponse(status_code=200, content={"userId": user.get("user_id"), "username": user.get("username")})
+
+@router.post("/add_avatar")
+async def fetch_avatars(
+    admin_password: str,
+    avatar_name: str = Form(...),
+    file: UploadFile = File(...)
+):
+    real_admin_password = os.getenv("ADMIN_PASSWORD")
+    if admin_password != real_admin_password:
+        return JSONResponse(status_code = 400, content = {"message": "Invalid admin password"})
+    
+    folder_path = "static/avatars"
+    os.makedirs(folder_path, exist_ok=True)
+
+    avatar_file_path = os.path.join(folder_path, file.filename)
+
+    #Check if file already exists
+    if os.path.exists(avatar_file_path):
+        return JSONResponse(status_code=400, content={"message": "Avatar already exists"})
+    
+    with open(avatar_file_path, "wb") as f:
+        f.write(await file.read())
+    
+    avatar_data = {
+        "name" : avatar_name,
+        "path" : avatar_file_path,
+        "id" : generate_uuid(),
+        "created_at" : datetime.datetime.now(),
+    }
+
+    database_name = "users"
+    collection_name = "avatars"
+
+    db = mongo_client[database_name]
+    if collection_name not in db.list_collection_names():
+        db.create_collection(collection_name)
+    
+    collection = db[collection_name]
+
+    collection.insert_one(avatar_data)
+
+    return JSONResponse(status_code=200, content={"message": "Avatar added"})
+
+@router.get("/fetch_avatar")
+def fetch_avatar(avatar_id: str = ''):
+    database_name = "users"
+    collection_name = "avatars"
+
+    db = mongo_client[database_name]
+    if collection_name not in db.list_collection_names():
+        return JSONResponse(status_code=404, content={"message": "Database not found"})
+    
+    collection = db[collection_name]
+
+    correct_avatar = collection.find_one({"id": avatar_id})
+
+    if not correct_avatar:
+        return JSONResponse(status_code=404, content={"message": "Avatar not found"})
+    # print(correct_avatar)
+    # print(correct_avatar["id"])
+    return JSONResponse(status_code=200, content=json.dumps({k: v for k, v in correct_avatar.items() if k not in ["_id", "created_at"]}))
+
+@router.get("/fetch_all_avatars")
+async def fetch_all_avatars():
+    database_name = "users"
+    collection_name = "avatars"
+
+    db = mongo_client[database_name]
+    if collection_name not in db.list_collection_names():
+        return JSONResponse(status_code=404, content={"message": "Database not found"})
+    
+    collection = db[collection_name]
+
+    avatars = collection.find({})
+    if not avatars:
+        return JSONResponse(status_code=404, content={"message": "No avatars found"})
+    
+    return JSONResponse(status_code=200, content=json.dumps([{k:v for k,v in avatar.items() if k not in ["_id", "created_at"]} for avatar in avatars]))
