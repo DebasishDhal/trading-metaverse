@@ -33,7 +33,12 @@ async def get_users():
 
 # Get a user by ID
 @router.get("/find_user")
-async def get_user(user_id = '', username = ''):
+#Fetches a user by user_id or username. Admin password is required. add_user in auth.py
+async def get_user(admin_password : str, user_id = '', username = ''):
+    real_admin_password = os.getenv("ADMIN_PASSWORD")
+    if admin_password != real_admin_password:
+        return JSONResponse(status_code = 400, content = {"message": "Invalid admin password"})
+    
     if not user_id and not username:
         return JSONResponse(status_code=400, content={"message": "User ID or username is required"})
     database_name = "users"
@@ -54,6 +59,7 @@ async def get_user(user_id = '', username = ''):
     return JSONResponse(status_code=200, content={"userId": user.get("user_id"), "username": user.get("username")})
 
 @router.post("/add_avatar")
+#Function adds avatar to database. Admin password is required
 async def fetch_avatars(
     admin_password: str,
     avatar_name: str = Form(...),
@@ -96,6 +102,7 @@ async def fetch_avatars(
     return JSONResponse(status_code=200, content={"message": "Avatar added"})
 
 @router.get("/fetch_avatar")
+#Function returns information of a single avatar, based on the avatar_id
 def fetch_avatar(avatar_id: str = ''):
     database_name = "users"
     collection_name = "avatars"
@@ -116,6 +123,7 @@ def fetch_avatar(avatar_id: str = ''):
 
 @router.get("/fetch_all_avatars")
 async def fetch_all_avatars():
+#Function return information of all avatars
     database_name = "users"
     collection_name = "avatars"
 
@@ -130,3 +138,35 @@ async def fetch_all_avatars():
         return JSONResponse(status_code=404, content={"message": "No avatars found"})
     
     return JSONResponse(status_code=200, content=json.dumps([{k:v for k,v in avatar.items() if k not in ["_id", "created_at"]} for avatar in avatars]))
+
+@router.post("/delete_avatar")
+# This function deletes the avatar from the codebase storage and from the database. Admin password is required
+async def delete_avatar(admin_password:  str, avatar_id: str = ''):
+    real_admin_password = os.getenv("ADMIN_PASSWORD")
+
+    if admin_password != real_admin_password:
+        return JSONResponse(status_code = 400, content = {"message": "Invalid admin password"})
+    
+    database_name = "users"
+    collection_name = "avatars"
+
+    if not avatar_id:
+        return JSONResponse(status_code=400, content={"message": "Avatar ID is required"})
+    
+    db = mongo_client[database_name]
+    if collection_name not in db.list_collection_names():
+        return JSONResponse(status_code=404, content={"message": "Database not found"})
+    
+    collection = db[collection_name]
+
+    avatar_exists = collection.find_one({"id": avatar_id})
+    if avatar_exists is None:
+        return JSONResponse(status_code=404, content={"message": "Avatar not found in MongoDB"})
+    
+    avatar_path = avatar_exists["path"]
+    if os.path.exists(avatar_path):
+        os.remove(avatar_path)
+        collection.delete_one({"id": avatar_id})
+        return JSONResponse(status_code=200, content={"message": "Avatar deleted from codebase storage"})
+
+    return JSONResponse(status_code=404, content={"message": "Avatar not found in codebase storage"})
