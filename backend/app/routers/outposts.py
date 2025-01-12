@@ -29,7 +29,7 @@ async def add_spawn_point(spawn_point: dict, admin_password: str):
     if admin_password != real_admin_password:
         return JSONResponse(status_code=403, content={"message": "Only admins can add spawn points"})
     
-    db = mongo_client["users"]
+    db = mongo_client["outposts"]
     collection = db["spawn_points"]
 
     # Check if spawn point already exists
@@ -46,7 +46,7 @@ async def update_spawn_point(spawn_id:str, spawn_point:dict, admin_password: str
     if admin_password != real_admin_password:
         return JSONResponse(status_code=403, content={"message": "Only admins can update spawn points"})
     
-    db = mongo_client["users"]
+    db = mongo_client["outposts"]
     collection = db["spawn_points"]
 
     # Check if spawn point exists
@@ -59,7 +59,7 @@ async def update_spawn_point(spawn_id:str, spawn_point:dict, admin_password: str
 
 @router.post("/fetch_spawn_points")
 async def fetch_spawn_points():
-    db = mongo_client["users"]
+    db = mongo_client["outposts"]
     collection = db["spawn_points"]
 
     spawn_points = sorted(list(collection.find({})), key=lambda x: x["id"])
@@ -69,9 +69,10 @@ async def fetch_spawn_points():
 
 @router.post("/choose_spawn_point")
 async def choose_spawn_point(user_id: str, spawn_id: str):
-    db = mongo_client["users"]
-    user_collection = db["metaverse_users"]
-    spawn_collection = db["spawn_points"]
+    db_user = mongo_client["users"]
+    db_outpost = mongo_client["outposts"]
+    user_collection = db_user["metaverse_users"]
+    spawn_collection = db_outpost["spawn_points"]
 
     # Check if spawn point exists
     existing_spawn_point = spawn_collection.find_one({"id": spawn_id})
@@ -97,9 +98,10 @@ async def delete_spawn_point(spawn_id: str, admin_password: str):
     if admin_password != real_admin_password:
         return JSONResponse(status_code=403, content={"message": "Only admins can delete spawn points"})
     
-    db = mongo_client["users"]
-    spawn_collection = db["spawn_points"]
-    user_collection = db["metaverse_users"]
+    db_user = mongo_client["users"]
+    db_outpost = mongo_client["outposts"]
+    user_collection = db_user["metaverse_users"]
+    spawn_collection = db_outpost["spawn_points"]
 
     # Check if spawn point exists
     unique_spawn_ids = spawn_collection.distinct("id")
