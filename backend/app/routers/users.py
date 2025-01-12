@@ -56,7 +56,7 @@ async def get_user(admin_password : str, user_id = '', username = ''):
     if not user:
         return JSONResponse(status_code=404, content={"message": "User not found"})
     
-    return JSONResponse(status_code=200, content={"userId": user.get("user_id"), "username": user.get("username")})
+    return JSONResponse(status_code=200, content={"userId": user.get("user_id"), "username": user.get("username"), "created_at": user.get("created_at"), "updated_at": user.get("updated_at")})
 
 @router.post("/add_avatar")
 #Function adds avatar to database. Admin password is required
@@ -170,3 +170,24 @@ async def delete_avatar(admin_password:  str, avatar_id: str = ''):
         return JSONResponse(status_code=200, content={"message": "Avatar deleted from codebase storage"})
 
     return JSONResponse(status_code=404, content={"message": "Avatar not found in codebase storage"})
+
+@router.post("/update_avatar")
+async def update_avatar(user_id: str, avatar_id: str):
+    database_name = "users"
+    collection_name = "metaverse_users"
+
+    db = mongo_client[database_name]
+    if collection_name not in db.list_collection_names():
+        return JSONResponse(status_code=404, content={"message": "Database not found"})
+    
+    collection = db[collection_name]
+
+    user = collection.find_one({"user_id": user_id})
+
+    if not user:
+        return JSONResponse(status_code=404, content={"message": "User not found"})
+
+    collection.update_one({"user_id": user_id}, {"$set": {"avatar_id": avatar_id, "updated_at": datetime.datetime.now()}})
+
+    return JSONResponse(status_code=200, content={"message": "Avatar updated"})
+
