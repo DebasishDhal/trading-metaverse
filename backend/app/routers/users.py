@@ -58,6 +58,26 @@ async def get_user(admin_password : str, user_id = '', username = ''):
     
     return JSONResponse(status_code=200, content={"userId": user.get("user_id"), "username": user.get("username"), "created_at": user.get("created_at"), "updated_at": user.get("updated_at")})
 
+@router.post("/delete_user")
+async def delete_user(user_id: str):
+    database_name = "users"
+    collection_name = "metaverse_users"
+
+    db = mongo_client[database_name]
+    if collection_name not in db.list_collection_names():
+        return JSONResponse(status_code=404, content={"message": "Database not found"})
+    
+    collection = db[collection_name]
+
+    user = collection.find_one({"username": user_id})
+
+    if not user:
+        return JSONResponse(status_code=404, content={"message": "User not found"})
+
+    collection.delete_one({"username": user_id})
+
+    return JSONResponse(status_code=200, content={"message": "User deleted"})
+
 @router.post("/add_avatar")
 #Function adds avatar to database. Admin password is required
 async def fetch_avatars(
