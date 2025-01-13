@@ -26,7 +26,8 @@ async def add_good(good: Good, admin_password: str):
     collection = db[collection_name]
 
     if good.id is None:
-        good.id = str(uuid.uuid4())
+        # good.id = str(uuid.uuid4())
+        good.id = str(good.good_name.replace(" ", "_").lower())
     
     good_data = good.model_dump()
     good_data["last_updated"] = datetime.datetime.now()
