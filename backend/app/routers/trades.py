@@ -83,7 +83,26 @@ async def purchase_goods(username:str, good_id: str, quantity: int, outpost_id: 
     #Update the good quantity in the outpost
     outpost_collection.update_one({"id": good_id, "outpost_id": outpost_id}, {"$set": {"good_quantity": available_quantity - quantity}})
 
-    ##TODO -- Add trade id, player id, trade details to trade database. 
-    ##TODO -- Check outpost_id of good and username are the same
+    trade_database = mongo_client["trades"]
+    trade_collection_name = "purchases"
+
+    if trade_collection_name not in trade_database.list_collection_names():
+        trade_database.create_collection(trade_collection_name)
+    
+    trade_collection = trade_database[trade_collection_name]
+
+    trade_data = {
+        "trade_id": trade_id,
+        "username": username,
+        "good_id": good_id,
+        "quantity": quantity,
+        "outpost_id": outpost_id,
+        "created_at": datetime.datetime.now()
+    }
+
+    trade_collection.insert_one(trade_data)
+
+    ##TODO -- Add trade id, player id, trade details to trade database. Done
+    ##TODO -- Check outpost_id of good and username are the same. Done
 
     return JSONResponse(status_code=200, content={"message": f"Successfully bought {quantity} of good with ID {good_id} in outpost {outpost_id}"})
