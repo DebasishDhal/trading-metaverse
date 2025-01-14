@@ -11,6 +11,44 @@ router = APIRouter(
     tags=["Goods"]
 )
 
+@router.post("/sync_goods")
+async def sync_goods(admin_password: str):
+    #Syncs goods from spawn points to goods collection. I added spawns and populated the goods manually for trial.
+    real_admin_password = os.getenv("ADMIN_PASSWORD")
+    if admin_password != real_admin_password:
+        return JSONResponse(status_code=403, content={"message": "Only admins can sync goods"})
+
+    db = mongo_client["outposts"]
+    collection_name = "spawn_points"
+
+    if collection_name not in db.list_collection_names():
+        return JSONResponse(status_code=404, content={"message": "Spawn points Database not found"})
+
+    spawn_collection = db[collection_name]
+    spawn_points = list(spawn_collection.find({}))
+
+    goods_collection = db["goods"]
+    count = 0
+    for spawn_point in spawn_points:
+        good_list = spawn_point["goods_available"]
+        for good in good_list:
+            existing_quantity = 0
+            #First check, if such good already exists at that output, if yes, add
+            existing_good = goods_collection.find_one({"name": good["name"], "outpost_id": spawn_point["id"]})
+            if existing_good:
+                existing_quantity = existing_good["good_quantity"]
+            good["outpost_id"] = spawn_point["id"]
+            good["quantity"] = good["quantity"] + existing_quantity
+            good["last_updated"] = datetime.datetime.now()
+
+            if existing_good:
+                goods_collection.update_one({"name": good["name"], "outpost_id": spawn_point["id"]}, {"$set": good})
+                count += 1
+            else:
+                goods_collection.insert_one(good)
+                count += 1
+    return JSONResponse(status_code=200, content={"message": f"Goods synced successfully with {count} updates."})
+
 @router.post("/add_goods")
 async def add_good(good: Good, admin_password: str):
     real_admin_password = os.getenv("ADMIN_PASSWORD")
