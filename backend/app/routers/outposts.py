@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
-from backend.app.utils.users_utils import UserSignupSchema
+from backend.app.utils.users_utils import UserSignupSchema, SpawnPoint
 from backend.app.utils.mongo_utils import mongo_client
 
 import os, json, random
@@ -24,7 +24,8 @@ async def get_outpost(outpost_id: int):
 
 
 @router.post("/add_spawn_point")
-async def add_spawn_point(spawn_point: dict, admin_password: str):
+# async def add_spawn_point(spawn_point: dict, admin_password: str):
+async def add_spawn_point(spawn_point: SpawnPoint, admin_password: str):
     real_admin_password = os.getenv("ADMIN_PASSWORD")
     if admin_password != real_admin_password:
         return JSONResponse(status_code=403, content={"message": "Only admins can add spawn points"})
@@ -32,6 +33,7 @@ async def add_spawn_point(spawn_point: dict, admin_password: str):
     db = mongo_client["outposts"]
     collection = db["spawn_points"]
 
+    spawn_point = spawn_point.model_dump()
     # Check if spawn point already exists
     existing_spawn_point = collection.find_one({"id": spawn_point["id"]})
     if existing_spawn_point:
