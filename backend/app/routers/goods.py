@@ -40,6 +40,7 @@ async def sync_goods(admin_password: str):
             good["outpost_id"] = spawn_point["id"]
             good["quantity"] = good["quantity"] + existing_quantity
             good["last_updated"] = datetime.datetime.now()
+            good["type"] = "good"
 
             if existing_good:
                 goods_collection.update_one({"name": good["name"], "outpost_id": spawn_point["id"]}, {"$set": good})
@@ -50,28 +51,121 @@ async def sync_goods(admin_password: str):
     return JSONResponse(status_code=200, content={"message": f"Goods synced successfully with {count} updates."})
 
 @router.post("/add_goods")
-async def add_good(good: Good, admin_password: str):
+async def add_goods(good: Good, admin_password: str):
+    """
+    Adds a new good to the specified outpost. If the good already exists at the outpost, 
+    it updates the quantity of the existing good. This function requires admin privileges.
+
+    Parameters:
+    - good: Good - The good to be added, which includes details such as name, price, quantity, unit, and outpost_id.
+    - admin_password: str - The admin password to authorize the addition of the good.
+
+    Returns:
+    - JSONResponse: A response indicating the success or failure of the operation.
+
+    Notes:
+    - Special care has been taken regarding value updates in database. Focus on inbuilt pymongo methods like $inc, instead of traditional updates, to avoid data loss during concurrent updates.
+    """
+
     real_admin_password = os.getenv("ADMIN_PASSWORD")
     if admin_password != real_admin_password:
         return JSONResponse(status_code=403, content={"message": "Only admins can add goods"})
     
     db = mongo_client["outposts"]
-    collection_name = "goods"
+    db = mongo_client["outposts"]
+    goods_collection = db["goods"]
+    spawn_collection = db["spawn_points"]
 
-    if collection_name not in db.list_collection_names():
-        db.create_collection(collection_name)
+    if "type_1_name_1_outpost_id_1" not in goods_collection.index_information():
+        goods_collection.create_index([("type", 1), ("name", 1), ("outpost_id", 1)], background=True, name="type_1_name_1_outpost_id_1")
+    if "id_1" not in spawn_collection.index_information():
+        spawn_collection.create_index([("id", 1)], background=True, name="id_1")
 
-    collection = db[collection_name]
-
-    if good.id is None:
-        # good.id = str(uuid.uuid4())
-        good.id = str(good.good_name.replace(" ", "_").lower())
-    
     good_data = good.model_dump()
     good_data["last_updated"] = datetime.datetime.now()
-    
-    collection.insert_one(good_data)
-    return JSONResponse(status_code=200, content={"message": "Good added successfully", "good": str(good_data)})
+    good_data["type"] = "good"
+
+    spawn_point = spawn_collection.find_one({"id": good_data["outpost_id"]})
+
+    if not spawn_point:
+        return JSONResponse(status_code=404, content={"message": "Outpost not found"})
+        
+    goods_available = spawn_point.get("goods_available", [])
+
+    for item in goods_available:
+        if item["name"] == good_data["name"]:
+            item["quantity"] += good_data["quantity"]
+            break
+    else:
+        goods_available.append({
+        "name": good_data["name"],
+        "price": good_data["price"], 
+        "quantity": good_data["quantity"],
+        "unit": good_data["unit"]
+        })
+
+    spawn_collection.update_one(
+        {"id": good_data["outpost_id"]}, 
+        {"$set": {"goods_available": goods_available}}
+    )
+
+    # # Use an atomic update operation with arrayFilters
+    # spawn_collection.update_one(
+    #     {"id": good_data["outpost_id"], "goods_available.name": good_data["name"]},
+    #     {
+    #         "$inc": {"goods_available.$.quantity": good_data["quantity"]},
+    #         "$set": {"goods_available.$.last_updated": datetime.datetime.now()}
+    #     }
+    # )
+
+    # # If the good was not found and updated, add it to the array, as it's a new good
+    # if spawn_collection.modified_count == 0:
+    #     spawn_collection.update_one(
+    #         {"id": good_data["outpost_id"]},
+    #         {
+    #             "$push": {
+    #                 "goods_available": {
+    #                     "name": good_data["name"],
+    #                     "price": good_data["price"],
+    #                     "quantity": good_data["quantity"],
+    #                     "unit": good_data["unit"],
+    #                     "last_updated": datetime.datetime.now()
+    #                 }
+    #             }
+    #         }
+    #     )
+
+    result = goods_collection.update_one(
+        {"type": "good", "name": good_data["name"], "outpost_id": good_data["outpost_id"]},
+        {"$inc": {"quantity": good_data["quantity"]}, "$set": {"last_updated": good_data["last_updated"]}},
+        upsert= True
+    )
+
+    if result.upserted_id:
+        message = f"Good added {good_data['name']} successfully"
+    else:
+        message = f"Good quantity added to existing good {good_data['name']} successfully"
+
+    return JSONResponse(status_code=200, content={"message": message, "good": str(good_data)})
+
+    # existing_good = goods_collection.find_one({
+    #                                             "type": "good", 
+    #                                             "name": good["name"], 
+    #                                             "outpost_id": good["outpost_id"]
+    #                                            })
+
+    # if existing_good:
+    #     # good_data["quantity"] = existing_good["quantity"] + good_data["quantity"]
+    #     # goods_collection.update_one({"type": "good", "name": good["name"], "outpost_id": good["outpost_id"]}, 
+    #     #                             {"$set": good_data})
+    #     goods_collection.update_one({"type": "good", "name": good["name"], "outpost_id": good["outpost_id"]}, 
+    #                                 {"$inc": {"quantity": good["quantity"]}, "$set": {"last_updated": datetime.datetime.now()}}
+    #                                 ) #$inc will increase the quantity by good["quantity"] amount and avoid concurrency errors
+    #     return JSONResponse(status_code=200, content={"message": f"Good quantity added to existing good {good['name']} successfully", "good": str(good_data)})
+
+    # else:
+    #     goods_collection.insert_one(good_data)
+    #     return JSONResponse(status_code=200, content={"message": f"Good added {good['name']} successfully", "good": str(good_data)})
 
 @router.post("/update_goods")
 async def update_good(good_id: str, good: dict, admin_password: str):
