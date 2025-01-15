@@ -90,7 +90,8 @@ async def choose_spawn_point(user_id: str, spawn_id: str):
     if existing_user.get("chose_spawn_already"):
         return JSONResponse(status_code=400, content={"message": "User has already chosen a spawn point. Use transports to move to the chosen spawn point."})
 
-    user_collection.update_one({"username": user_id}, {"$set": {"spawn_id": spawn_id, "current_outpost_id": spawn_id,"chose_spawn_already": True}})
+    bonus_amount = existing_spawn_point.get("gold_bonus", 0)
+    user_collection.update_one({"username": user_id}, {"$set": {"spawn_outpost_id": spawn_id, "current_outpost_id": spawn_id,"chose_spawn_already": True, "money": bonus_amount}})
 
     return JSONResponse(status_code=200, content={"message": "Spawn point chosen"})
 
