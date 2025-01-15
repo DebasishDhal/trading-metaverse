@@ -34,19 +34,43 @@ async def fetch_goods(outpost: str):
 
 @router.post("/purchase_goods")
 async def purchase_goods(username:str, good_id: str, quantity: int, outpost_id: str):
-    #First check whether the good exists in that outpost or not
-    outpost_db = mongo_client["outposts"]
-    outpost_collection = outpost_db["goods"]
+    #First we check through all the conditions that might generate errors, then we do the transaction
+    """
+    Deducts good's quantity from outposts/goods (field "quantity") and outposts/spawn_points ("goods_available"), 
+    Increases good's quantity in player's inventory ("inventory").
+    Deducts money from player's money
+    Adds trade ID in trades/purchases collection
 
-    good = outpost_collection.find_one({"id": good_id, "outpost_id": outpost_id})
+    Parameters:
+    - good_id: good which needs to be purchased
+    - username: Player who will purchase
+    - quantity: Quantity of good which needs to be purchased
+    - outpost_id: Outpost where the good is available
+
+    Returns:
+    - JSONResponse: A response indicating the success or failure of the operation.
+
+    Notes:
+    - The goods in users inventory is stored as a list. The last purchased quantity will come out as the top item in the inventory list, acts as a cache.
+    """
+
+    outpost_db = mongo_client["outposts"]
+    goods_collection = outpost_db["goods"]
+    outposts_collection = outpost_db["spawn_points"]
+
+    outpost = outposts_collection.find_one({"id": outpost_id})
+    if not outpost:
+        return JSONResponse(status_code=404, content={"message": f"Outpost with ID {outpost_id} not found"})
+
+    good = goods_collection.find_one({"name": good_id, "outpost_id": outpost_id})
     if not good:
         return JSONResponse(status_code=404, content={"message": f"Good with ID {good_id} not found in outpost {outpost_id}"})
 
-    available_quantity = good["good_quantity"]
+    available_quantity = good["quantity"]
     if quantity > available_quantity:
         return JSONResponse(status_code=400, content={"message": f"Insufficient quantity of good with ID {good_id} in outpost {outpost_id}"})
     
-    money_required = quantity * good["good_price"]
+    money_required = quantity * good["price"]
 
     #Check if the player has enough money
     player_db = mongo_client["users"]
@@ -55,13 +79,38 @@ async def purchase_goods(username:str, good_id: str, quantity: int, outpost_id: 
     player = player_collection.find_one({"username": username})
     if not player:
         return JSONResponse(status_code=404, content={"message": f"Player with username {username} not found"})
-    
+    if player.get("current_outpost_id") != outpost_id:
+        return JSONResponse(status_code=400, content={"message": f"Player is not in outpost {outpost_id}"})
     if player.get("money", 0) < money_required:
         return JSONResponse(status_code=400, content={"message": f"Not enough funds. Required: {money_required}, Available: {player.get('money',0)}"})
     
+    goods_available = outpost.get("goods_available", [])
+
+    updated_good = None
+    for good in goods_available:
+        if good["name"] == good_id:
+            if good["quantity"] < quantity:
+                return JSONResponse(status_code=400, content={"message": f"Insufficient quantity of good '{good_id}' in spawn point {outpost_id}"})
+            good["quantity"] -= quantity
+            updated_good = good
+            break
+
+    if not updated_good:
+        return JSONResponse(status_code=404, content={"message": f"Good '{good_id}' not found in spawn point {outpost_id}"})
+
+    # Reorder the list (move updated good to the top)
+    goods_available = [updated_good] + [good for good in goods_available if good["name"] != good_id]
+
+    # Update the spawn_points collection
+    outposts_collection.update_one(
+        {"id": outpost_id},
+        {"$set": {"goods_available": goods_available}}
+    )
+
     player_inventory_now = player.get("inventory", {})
+    time_now = datetime.datetime.now()
     if good_id not in player_inventory_now: #Do not use dict get method here, as it doesn't update anything
-        player_inventory_now[good_id] = {"quantity": 0, "average_price": 0, "updated_at": None, "created_at": datetime.datetime.now()}
+        player_inventory_now[good_id] = {"quantity": 0, "average_price": 0, "updated_at": time_now, "created_at": time_now}
 
     previous_quantity = player_inventory_now[good_id]["quantity"]
     previous_average_price = player_inventory_now[good_id]["average_price"]
@@ -71,17 +120,18 @@ async def purchase_goods(username:str, good_id: str, quantity: int, outpost_id: 
 
     trade_id = uuid.uuid4().hex
 
+    time = datetime.datetime.now()
     player_inventory_now[good_id].update({
     "quantity": new_quantity,
     "average_price": average_price,
-    "updated_at": datetime.datetime.now(),
+    "updated_at": time,
     "trade_ids": player_inventory_now[good_id].get("trade_ids", []) + [trade_id]
     }) #Do not use get method, it won't update anything.
 
     player_collection.update_one({"username": username}, {"$set": {"inventory": player_inventory_now, "money": player.get("money", 0) - money_required}})
 
     #Update the good quantity in the outpost
-    outpost_collection.update_one({"id": good_id, "outpost_id": outpost_id}, {"$set": {"good_quantity": available_quantity - quantity}})
+    goods_collection.update_one({"name": good_id, "outpost_id": outpost_id}, {"$set": {"quantity": available_quantity - quantity}})
 
     trade_database = mongo_client["trades"]
     trade_collection_name = "purchases"
@@ -97,12 +147,18 @@ async def purchase_goods(username:str, good_id: str, quantity: int, outpost_id: 
         "good_id": good_id,
         "quantity": quantity,
         "outpost_id": outpost_id,
-        "created_at": datetime.datetime.now()
+        "created_at": time_now
     }
 
     trade_collection.insert_one(trade_data)
+
 
     ##TODO -- Add trade id, player id, trade details to trade database. Done
     ##TODO -- Check outpost_id of good and username are the same. Done
 
     return JSONResponse(status_code=200, content={"message": f"Successfully bought {quantity} of good with ID {good_id} in outpost {outpost_id}"})
+
+@router.post("/sell_goods")
+async def sell_goods(username:str, good_id: str, quantity: int, outpost_id: str):
+    pass
+
