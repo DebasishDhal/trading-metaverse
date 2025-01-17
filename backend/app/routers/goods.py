@@ -55,7 +55,7 @@ async def add_goods(good: Good, admin_password: str):
     """
     Adds a new good to the specified outpost. If the good already exists at the outpost, 
     it updates the quantity of the existing good. This function requires admin privileges.
-
+serv
     Parameters:
     - good: Good - The good to be added, which includes details such as name, price, quantity, unit, and outpost_id.
     - admin_password: str - The admin password to authorize the addition of the good.
@@ -167,29 +167,62 @@ async def add_goods(good: Good, admin_password: str):
     #     goods_collection.insert_one(good_data)
     #     return JSONResponse(status_code=200, content={"message": f"Good added {good['name']} successfully", "good": str(good_data)})
 
+## TODO - Update the update_goods function according to the new schema
 @router.post("/update_goods")
-async def update_good(good_id: str, good: dict, admin_password: str):
+async def update_good(good: dict, admin_password: str):
     real_admin_password = os.getenv("ADMIN_PASSWORD")
     if admin_password != real_admin_password:
         return JSONResponse(status_code=403, content={"message": "Only admins can update goods"})
 
+    if len(good.items()) <= 1:
+        return JSONResponse(status_code=400, content={"message": "Good data not provided"})
+    
     db = mongo_client["outposts"]
     collection_name = "goods"
 
     if collection_name not in db.list_collection_names():
         return JSONResponse(status_code=404, content={"message": "Goods Database not found"})
 
-    collection = db[collection_name]
+    goods_collection = db[collection_name]
 
     good_data = good
-    good_data["last_updated"] = datetime.datetime.now()
+    time = datetime.datetime.now()
+    good_data["last_updated"] = time
     
     # Check if good exists
-    existing_good = collection.find_one({"id": good_id})
+    existing_good = goods_collection.find_one({"name": good_data["name"]})
     if not existing_good:
         return JSONResponse(status_code=404, content={"message": "Good not found"})
 
-    collection.update_one({"id": good_id}, {"$set": good_data})
+    #Update it in spawn points as well
+    spawn_collection = db["spawn_points"]
+
+    outpost_document = spawn_collection.find_one({"id": good_data["outpost_id"]})
+    if not outpost_document:
+        return JSONResponse(status_code=404, content={"message": "Outpost not found"})
+
+    goods_available = outpost_document.get("goods_available", [])
+
+    for item in goods_available:
+        if item["name"] == good_data["name"]:
+            old_quantity = item["quantity"]
+            old_unit = item["unit"]
+            old_price = item["price"]
+            item["quantity"] = good_data.get("quantity", old_quantity)
+            item["unit"] = good_data.get("unit", old_unit)
+            item["price"] = good_data.get("price", old_price)
+            break
+
+    spawn_result = spawn_collection.update_one({"id": good_data["outpost_id"]}, {"$set": {"goods_available": goods_available}})
+
+    goods_result = goods_collection.update_one({"name": good_data["name"]}, {"$set": good_data})
+
+    if goods_result.modified_count == 0:
+        return JSONResponse(status_code=400, content={"message": "Good update failed"})
+    
+    if spawn_result.modified_count == 0:
+        return JSONResponse(status_code=400, content={"message": "Good update failed"})
+
     return JSONResponse(status_code=200, content={"message": "Good updated successfully", "good": str(good_data)})
 
 
