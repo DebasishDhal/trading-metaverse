@@ -4,7 +4,7 @@ from fastapi.responses import JSONResponse
 from backend.app.utils.users_utils import UserSignupSchema, SpawnPoint
 from backend.app.utils.mongo_utils import mongo_client
 
-import os, json, random
+import os, json, random, datetime
 
 router = APIRouter(
     prefix="/outposts",
@@ -91,7 +91,8 @@ async def choose_spawn_point(user_id: str, spawn_id: str):
         return JSONResponse(status_code=400, content={"message": "User has already chosen a spawn point. Use transports to move to the chosen spawn point."})
 
     bonus_amount = existing_spawn_point.get("gold_bonus", 0)
-    user_collection.update_one({"username": user_id}, {"$set": {"spawn_outpost_id": spawn_id, "current_outpost_id": spawn_id,"chose_spawn_already": True, "money": bonus_amount}})
+    time = datetime.datetime.now()
+    user_collection.update_one({"username": user_id}, {"$set": {"spawn_outpost_id": spawn_id, "current_outpost_id": spawn_id,"chose_spawn_already": True, "money": bonus_amount, "updated_at": time}})
 
     return JSONResponse(status_code=200, content={"message": "Spawn point chosen"})
 
