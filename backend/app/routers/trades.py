@@ -158,7 +158,71 @@ async def purchase_goods(username:str, good_id: str, quantity: int, outpost_id: 
 
     return JSONResponse(status_code=200, content={"message": f"Successfully bought {quantity} of good with ID {good_id} in outpost {outpost_id}"})
 
-@router.post("/sell_goods")
-async def sell_goods(username:str, good_id: str, quantity: int, outpost_id: str):
-    pass
+@router.post("/sell_goods") #Tested
+async def sell_goods(username:str, good_id: str, quantity: int, outpost_id: str, price: float, unit: str):
+    """
+        Takes username, good_id, quantity, outpost_id, price, unit as input.
+        Deducts quantity from user.inventory
+        Increases quantity at outposts.spawn_points.goods_available
+        Increases quantity at outpost.goods.quantity
+
+        Needs more polishing TODO
+    """
+    ## TODO - Figure out the goddamn price. First user should be able to query about the price he might get, then only sell.
+    ## TODO - Do a separate endpoint for price query from the outpost.
+    if quantity <= 0:
+        return JSONResponse(status_code=400, content={"message": "Quantity must be greater than 0"})
+    outposts_db = mongo_client["outposts"]
+    goods_collection = outposts_db["goods"]
+    outposts_collection = outposts_db["spawn_points"]
+    users_db = mongo_client["users"]
+    users_collection = users_db["metaverse_users"]
+    
+    user = users_collection.find_one({"username": username, "current_outpost_id": outpost_id})
+
+    if not user:
+        return JSONResponse(status_code=404, content={"message": f"User with username {username} not found at {outpost_id}"})
+    
+    time = datetime.datetime.now()
+    inventory = user.get("inventory", {})
+    if good_id not in inventory:
+        return JSONResponse(status_code=404, content={"message": f"Good with ID {good_id} not found in inventory"})
+    
+    if quantity > inventory[good_id]["quantity"]:
+        return JSONResponse(status_code=400, content={"message": f"Insufficient quantity of good with ID {good_id} in inventory"})
+    
+    goods_result = goods_collection.update_one({"name": good_id, "outpost_id": outpost_id}, {"$inc": {"quantity": quantity}})
+
+    #From the player inventory, deduct the quantity of the good
+    inventory[good_id]["quantity"] -= quantity
+    inventory[good_id]["updated_at"] = time
+    inventory[good_id]["trade_ids"] = inventory[good_id].get("trade_ids", []) + [uuid.uuid4().hex]
+    users_collection.update_one({"username": username, "current_outpost_id": outpost_id}, {"$set": {"inventory": inventory}})
+
+    #Update the spawn_points collection
+    result = outposts_collection.update_one(
+        {"id": outpost_id, "goods_available.name": good_id},  # Match document containing the good
+        {
+            "$inc": {"goods_available.$.quantity": quantity},  # Increment quantity if it exists
+            "$set": {"goods_available.$.price": price, "goods_available.$.unit": unit}
+        }
+    )
+
+    # If no document was modified, the good doesn't exist; insert it
+    if result.matched_count == 0:
+        result = outposts_collection.update_one(
+            {"id": outpost_id},  # Match the specific outpost
+            {
+                "$push": {  # Add a new good dictionary to the goods_available array
+                    "goods_available": {
+                        "name": good_id,
+                        "price": price,
+                        "quantity": quantity,
+                        "unit": unit
+                    }
+                }
+            }
+        )
+
+    return JSONResponse(status_code=200, content={"message": f"Successfully sold {quantity} of good with ID {good_id} in outpost {outpost_id}"})
 
