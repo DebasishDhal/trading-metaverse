@@ -147,6 +147,8 @@ async def purchase_goods(username:str, good_id: str, quantity: int, outpost_id: 
         "good_id": good_id,
         "quantity": quantity,
         "outpost_id": outpost_id,
+        "type": "purchase",
+        "price": money_required,
         "created_at": time_now
     }
 
@@ -177,6 +179,8 @@ async def sell_goods(username:str, good_id: str, quantity: int, outpost_id: str,
     outposts_collection = outposts_db["spawn_points"]
     users_db = mongo_client["users"]
     users_collection = users_db["metaverse_users"]
+    trade_database = mongo_client["trades"]
+    trade_collection = trade_database["purchases"]
     
     user = users_collection.find_one({"username": username, "current_outpost_id": outpost_id})
 
@@ -184,6 +188,8 @@ async def sell_goods(username:str, good_id: str, quantity: int, outpost_id: str,
         return JSONResponse(status_code=404, content={"message": f"User with username {username} not found at {outpost_id}"})
     
     time = datetime.datetime.now()
+    trade_id = uuid.uuid4().hex
+
     inventory = user.get("inventory", {})
     if good_id not in inventory:
         return JSONResponse(status_code=404, content={"message": f"Good with ID {good_id} not found in inventory"})
@@ -196,7 +202,7 @@ async def sell_goods(username:str, good_id: str, quantity: int, outpost_id: str,
     #From the player inventory, deduct the quantity of the good
     inventory[good_id]["quantity"] -= quantity
     inventory[good_id]["updated_at"] = time
-    inventory[good_id]["trade_ids"] = inventory[good_id].get("trade_ids", []) + [uuid.uuid4().hex]
+    inventory[good_id]["trade_ids"] = inventory[good_id].get("trade_ids", []) + [trade_id]
     users_collection.update_one({"username": username, "current_outpost_id": outpost_id}, {"$set": {"inventory": inventory}})
 
     #Update the spawn_points collection
@@ -224,5 +230,18 @@ async def sell_goods(username:str, good_id: str, quantity: int, outpost_id: str,
             }
         )
 
+    trade_entry = {
+        "trade_id": trade_id,
+        "username": username,
+        "good_id": good_id,
+        "quantity": quantity,
+        "outpost_id": outpost_id,
+        "type": "sell",
+        "price": price,
+        "created_at": time
+    }
+
+    trade_collection.insert_one(trade_entry)
+    
     return JSONResponse(status_code=200, content={"message": f"Successfully sold {quantity} of good with ID {good_id} in outpost {outpost_id}"})
 
