@@ -4,6 +4,8 @@ from fastapi.responses import JSONResponse
 from backend.app.utils.mongo_utils import mongo_client
 from backend.app.utils.goods_utils import Good
 
+from typing import Optional
+
 import uuid, datetime, os
 
 router = APIRouter(
@@ -11,7 +13,7 @@ router = APIRouter(
     tags=["Goods"]
 )
 
-@router.post("/sync_goods")
+@router.post("/sync_goods") #Tested
 async def sync_goods(admin_password: str):
     #Syncs goods from spawn points to goods collection. I added spawns and populated the goods manually for trial.
     real_admin_password = os.getenv("ADMIN_PASSWORD")
@@ -36,7 +38,7 @@ async def sync_goods(admin_password: str):
             #First check, if such good already exists at that output, if yes, add
             existing_good = goods_collection.find_one({"name": good["name"], "outpost_id": spawn_point["id"]})
             if existing_good:
-                existing_quantity = existing_good["good_quantity"]
+                existing_quantity = existing_good["quantity"]
             good["outpost_id"] = spawn_point["id"]
             good["quantity"] = good["quantity"] + existing_quantity
             good["last_updated"] = datetime.datetime.now()
@@ -50,7 +52,7 @@ async def sync_goods(admin_password: str):
                 count += 1
     return JSONResponse(status_code=200, content={"message": f"Goods synced successfully with {count} updates."})
 
-@router.post("/add_goods")
+@router.post("/add_goods") #Tested
 async def add_goods(good: Good, admin_password: str):
     """
     Adds a new good to the specified outpost. If the good already exists at the outpost, 
@@ -226,7 +228,7 @@ async def update_good(good: dict, admin_password: str):
     return JSONResponse(status_code=200, content={"message": "Good updated successfully", "good": str(good_data)})
 
 
-@router.get("/fetch/{outpost}")
+@router.get("/fetch/{outpost}") #Tested
 async def fetch_goods(outpost: str):
     db = mongo_client["outposts"] #Bruh, I accidentally typed "outpostS, took me 5 min. to figure out"
     collection = db["goods"]
@@ -243,17 +245,33 @@ async def fetch_goods(outpost: str):
     return JSONResponse(status_code=200, content={"outpost": outpost, "goods": str(goods)})
 
 
-@router.post("/delete/{good_id}")
-async def delete_good(good_id: str, admin_password: str):
+@router.post("/delete/{good_name}") #Tested
+async def delete_good(good_name: str, admin_password: str, outpost_id : Optional[str] = None):
     real_admin_password = os.getenv("ADMIN_PASSWORD")
     if admin_password != real_admin_password:
         return JSONResponse(status_code=403, content={"message": "Only admins can delete goods"})
     
     db = mongo_client["outposts"]
-    collection = db["goods"]
+    goods_collection = db["goods"]
+    spawn_collection = db["spawn_points"]
 
-    result = collection.delete_one({"id": good_id})
-    if result.deleted_count == 0:
+    if not outpost_id:
+        goods_result = goods_collection.delete_many({"name": good_name})
+        spawn_result = spawn_collection.update_many(
+            {"goods_available.name": good_name},  # Match documents containing the good
+            {"$pull": {"goods_available": {"name": good_name}}}  # Remove the matching good
+        )
+
+
+    else:
+        goods_result = goods_collection.delete_one({"name": good_name, "outpost_id": outpost_id})
+        # If outpost_id is provided, update only a single relevant document
+        spawn_result = spawn_collection.update_one(
+            {"id": outpost_id, "goods_available.name": good_name},  # Match the specific document
+            {"$pull": {"goods_available": {"name": good_name}}}  # Remove the matching good
+        )
+                
+    if goods_result.deleted_count == 0 or spawn_result.modified_count == 0:
         return JSONResponse(status_code=404, detail="Good not found")
     
     return {"message": "Good deleted successfully"}
