@@ -191,7 +191,7 @@ async def delete_avatar(admin_password:  str, avatar_id: str = ''):
 
     return JSONResponse(status_code=404, content={"message": "Avatar not found in codebase storage"})
 
-@router.post("/update_avatar")
+@router.post("/update_avatar") #Tested, 11/02/2025
 async def update_avatar(user_id: str, avatar_id: str):
     database_name = "users"
     collection_name = "metaverse_users"

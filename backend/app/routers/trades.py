@@ -73,10 +73,10 @@ async def purchase_goods(username:str, good_id: str, quantity: int, outpost_id: 
     money_required = quantity * good["price"]
 
     #Check if the player has enough money
-    player_db = mongo_client["users"]
-    player_collection = player_db["metaverse_users"]
+    users_db = mongo_client["users"]
+    users_collection = users_db["metaverse_users"]
 
-    player = player_collection.find_one({"username": username})
+    player = users_collection.find_one({"username": username})
     if not player:
         return JSONResponse(status_code=404, content={"message": f"Player with username {username} not found"})
     if player.get("current_outpost_id") != outpost_id:
@@ -124,11 +124,12 @@ async def purchase_goods(username:str, good_id: str, quantity: int, outpost_id: 
     player_inventory_now[good_id].update({
     "quantity": new_quantity,
     "average_price": average_price,
+    "unit": good.get("unit", "kg"),
     "updated_at": time,
     "trade_ids": player_inventory_now[good_id].get("trade_ids", []) + [trade_id]
     }) #Do not use get method, it won't update anything.
 
-    player_collection.update_one({"username": username}, {"$set": {"inventory": player_inventory_now, "money": player.get("money", 0) - money_required}})
+    users_collection.update_one({"username": username}, {"$set": {"inventory": player_inventory_now, "money": player.get("money", 0) - money_required}})
 
     #Update the good quantity in the outpost
     goods_collection.update_one({"name": good_id, "outpost_id": outpost_id}, {"$set": {"quantity": available_quantity - quantity}})
@@ -153,10 +154,6 @@ async def purchase_goods(username:str, good_id: str, quantity: int, outpost_id: 
     }
 
     trade_collection.insert_one(trade_data)
-
-
-    ##TODO -- Add trade id, player id, trade details to trade database. Done
-    ##TODO -- Check outpost_id of good and username are the same. Done
 
     return JSONResponse(status_code=200, content={"message": f"Successfully bought {quantity} of good with ID {good_id} in outpost {outpost_id}"})
 
