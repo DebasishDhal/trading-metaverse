@@ -202,12 +202,12 @@ async def update_avatar(user_id: str, avatar_id: str):
     
     collection = db[collection_name]
 
-    user = collection.find_one({"user_id": user_id})
+    user = collection.find_one({"username": user_id})
 
     if not user:
         return JSONResponse(status_code=404, content={"message": "User not found"})
 
-    collection.update_one({"user_id": user_id}, {"$set": {"avatar_id": avatar_id, "updated_at": datetime.datetime.now()}})
+    collection.update_one({"username": user_id}, {"$set": {"avatar_id": avatar_id, "updated_at": datetime.datetime.now()}})
 
     return JSONResponse(status_code=200, content={"message": "Avatar updated"})
 
