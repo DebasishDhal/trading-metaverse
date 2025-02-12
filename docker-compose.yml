@@ -8,6 +8,7 @@ services:
     ports:
       - "8004:8000"  # Expose port 8004 on host to port 8000 in the container
     command: uvicorn main:app --host 0.0.0.0 --reload      
+    # command: /bin/sh -c "pip install -r requirements.txt && uvicorn main:app --host 0.0.0.0 --reload"
     environment:
       - MONGODB_URL=mongodb://mongodb-metaverse:27017
       - DATABASE_NAME=trading_outpost

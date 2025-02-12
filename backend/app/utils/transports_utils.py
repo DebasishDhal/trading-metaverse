@@ -1,5 +1,5 @@
 from typing import List
-# from geopy import distance
+from geopy.distance import geodesic
 # import networkx as nx
 
 weight_unit_conversion_table = [
@@ -85,4 +85,4 @@ def weight_calculator(inventory: List[dict]):
     return total_weight
 
 def direct_distance_calculator(coords1, coords2):
-    return distance.distance(coords1, coords2).km
+    return geodesic(coords1, coords2).km

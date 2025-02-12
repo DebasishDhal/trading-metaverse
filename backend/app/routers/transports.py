@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 from backend.app.utils.mongo_utils import mongo_client
-from backend.app.utils.transports_utils import weight_unit_conversion_table, weight_calculator
+from backend.app.utils.transports_utils import weight_unit_conversion_table, weight_calculator, direct_distance_calculator
 from fastapi.responses import JSONResponse
 
 router = APIRouter(
@@ -47,7 +47,7 @@ async def weight_converter_sanity_check():
 async def list_transport():
     return JSONResponse(status_code=200, content={"options": ["Caravan", "Fast Horse"]})
 
-@router.get("/transport_profile")
+@router.get("/transport_profile") #Tested. 12/02/2025 (Pre-pre-valentine's day)
 async def transport_profile(user_id: str):
     result = {}
     database_name = "users"
@@ -81,12 +81,14 @@ async def transport_profile(user_id: str):
     outpost_collection = db["spawn_points"]
     # print("Total spawn points", outpost_collection.count_documents({}))
 
-    routes = outpost_collection.find_one({"id": current_outpost}, {"trade_routes": 1})
+    routes = outpost_collection.find_one({"id": current_outpost}, {"trade_routes": 1, "latitude": 1, "longitude": 1})
     print(routes)
     if not routes or "trade_routes" not in routes:
         return JSONResponse(status_code=200, content={"message": "No trade routes found for current outpost. You are stranded."})
 
     trade_routes = routes["trade_routes"]
+    current_coords = (routes["latitude"], routes["longitude"])
+    print(current_coords)
     # print(trade_routes)
     connected_outposts = list(
         outpost_collection.find(
@@ -94,6 +96,7 @@ async def transport_profile(user_id: str):
             {"_id": 0, "id": 1, "latitude": 1, "longitude": 1}
         )
     )
+    connected_outposts = [{**outpost,"distance": direct_distance_calculator(current_coords, (outpost["latitude"], outpost["longitude"]))} for outpost in connected_outposts]
 
     return connected_outposts
 
