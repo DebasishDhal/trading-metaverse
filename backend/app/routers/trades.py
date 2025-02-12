@@ -32,7 +32,7 @@ async def fetch_goods(outpost: str):
     return JSONResponse(status_code=200, content={"outpost": outpost, "goods": str(goods)})
 
 
-@router.post("/purchase_goods")
+@router.post("/purchase_goods", operation_id="purchase_goods") #Tested
 async def purchase_goods(username:str, good_id: str, quantity: int, outpost_id: str):
     #First we check through all the conditions that might generate errors, then we do the transaction
     """
@@ -157,7 +157,7 @@ async def purchase_goods(username:str, good_id: str, quantity: int, outpost_id: 
 
     return JSONResponse(status_code=200, content={"message": f"Successfully bought {quantity} of good with ID {good_id} in outpost {outpost_id}"})
 
-@router.post("/sell_goods") #Tested
+@router.post("/sell_goods", operation_id="sell_goods") #Tested
 async def sell_goods(username:str, good_id: str, quantity: int, outpost_id: str, price: float, unit: str):
     """
         Takes username, good_id, quantity, outpost_id, price, unit as input.
