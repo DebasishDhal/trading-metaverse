@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 # from .routers import users, outposts, trades, transports
-from backend.app.routers import users, outposts, trades, transports, auth, goods, trades
+from backend.app.routers import users, outposts, trades, transports, auth, goods, trades, backup
 
 app = FastAPI(
     title="Trading Outpost API",
@@ -30,6 +30,7 @@ app.include_router(users.router)
 app.include_router(transports.router)
 app.include_router(goods.router)
 app.include_router(trades.router)
+app.include_router(backup.router)
 
 # Test route
 @app.get("/")
