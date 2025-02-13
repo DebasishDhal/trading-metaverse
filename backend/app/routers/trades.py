@@ -2,6 +2,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from backend.app.utils.mongo_utils import mongo_client
+from backend.app.utils.transports_utils import weight_unit_conversion_table
 
 import datetime, uuid
 router = APIRouter(
@@ -67,6 +68,7 @@ async def purchase_goods(username:str, good_id: str, quantity: int, outpost_id: 
         return JSONResponse(status_code=404, content={"message": f"Good with ID {good_id} not found in outpost {outpost_id}"})
 
     available_quantity = good["quantity"]
+    good_unit = good["unit"]
     if quantity > available_quantity:
         return JSONResponse(status_code=400, content={"message": f"Insufficient quantity of good with ID {good_id} in outpost {outpost_id}"})
     
@@ -83,7 +85,7 @@ async def purchase_goods(username:str, good_id: str, quantity: int, outpost_id: 
         return JSONResponse(status_code=400, content={"message": f"Player is not in outpost {outpost_id}"})
     if player.get("money", 0) < money_required:
         return JSONResponse(status_code=400, content={"message": f"Not enough funds. Required: {money_required}, Available: {player.get('money',0)}"})
-    
+
     goods_available = outpost.get("goods_available", [])
 
     updated_good = None
@@ -129,7 +131,27 @@ async def purchase_goods(username:str, good_id: str, quantity: int, outpost_id: 
     "trade_ids": player_inventory_now[good_id].get("trade_ids", []) + [trade_id]
     }) #Do not use get method, it won't update anything.
 
-    users_collection.update_one({"username": username}, {"$set": {"inventory": player_inventory_now, "money": player.get("money", 0) - money_required}})
+    print(good)
+    if good_unit == "kg":
+        merchandise_weight = player.get("merchandise_weight", 0) + quantity
+    else:
+        #Search which item of list weight_unit_conversion_table matches with "name" and "unit" of item
+        entry = None
+        for entry in weight_unit_conversion_table:
+            if good_id == entry["name"] and good_unit == entry["unit"]:
+                merchandise_weight = player.get("merchandise_weight", 0) + quantity * entry["per_unit_mass"]
+                break
+
+    users_collection.update_one(
+        {"username": username},
+        {
+            "$set": {
+                "inventory": player_inventory_now,
+                "money": player.get("money", 0) - money_required,
+                "merchandise_weight": merchandise_weight
+            }
+        }
+    )
 
     #Update the good quantity in the outpost
     goods_collection.update_one({"name": good_id, "outpost_id": outpost_id}, {"$set": {"quantity": available_quantity - quantity}})

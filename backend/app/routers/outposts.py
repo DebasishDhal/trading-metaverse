@@ -70,7 +70,7 @@ async def fetch_spawn_points():
     return JSONResponse(status_code=200, content=json.dumps(spawn_points))
 
 @router.post("/choose_spawn_point")
-async def choose_spawn_point(user_id: str, spawn_id: str):
+async def choose_spawn_point(username: str, spawn_id: str):
     db_user = mongo_client["users"]
     db_outpost = mongo_client["outposts"]
     user_collection = db_user["metaverse_users"]
@@ -82,7 +82,7 @@ async def choose_spawn_point(user_id: str, spawn_id: str):
         return JSONResponse(status_code=404, content={"message": "Spawn point not found"})
     
     # Check if user exists
-    existing_user = user_collection.find_one({"username": user_id})
+    existing_user = user_collection.find_one({"username": username})
     if not existing_user:
         return JSONResponse(status_code=404, content={"message": "User not found"})
 
@@ -92,7 +92,7 @@ async def choose_spawn_point(user_id: str, spawn_id: str):
 
     bonus_amount = existing_spawn_point.get("gold_bonus", 0)
     time = datetime.datetime.now()
-    user_collection.update_one({"username": user_id}, {"$set": {"spawn_outpost_id": spawn_id, "current_outpost_id": spawn_id,"chose_spawn_already": True, "money": bonus_amount, "updated_at": time}})
+    user_collection.update_one({"username": username}, {"$set": {"spawn_outpost_id": spawn_id, "current_outpost_id": spawn_id,"chose_spawn_already": True, "money": bonus_amount, "merchandise_weight": 0,"updated_at": time}})
 
     return JSONResponse(status_code=200, content={"message": "Spawn point chosen"})
 

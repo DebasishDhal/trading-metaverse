@@ -1,6 +1,6 @@
 from typing import List
 from geopy.distance import geodesic
-import os
+from pydantic import Field
 # import networkx as nx
 
 from pydantic import BaseModel
@@ -9,9 +9,9 @@ from typing import Optional
 
 class Transport(BaseModel):
     name: str
-    speed: Optional[int] = None
-    capacity: Optional[int] = None
-    base_cost_per_km: Optional[int] = None
+    speed: Optional[int] = Field(None, gt=0)
+    capacity: Optional[int] = Field(None, gt=0)
+    base_cost_per_km: Optional[int] = Field(None, gt=0)
     edit: bool = False
 
 weight_unit_conversion_table = [
@@ -82,19 +82,6 @@ weight_unit_conversion_table = [
     }
 ]
 
-def weight_calculator(inventory: List[dict]):
-    total_weight = 0
-    for item in inventory:
-        if item["unit"] == "kg":
-            total_weight += item["quantity"]
-        else:
-            #Search which item of list weight_unit_conversion_table matches with "name" and "unit" of item
-            entry = None
-            for entry in weight_unit_conversion_table:
-                if item["name"] == entry["name"] and item["unit"] == entry["unit"]:
-                    total_weight += item["quantity"] * entry["per_unit_mass"]
-
-    return total_weight
 
 def direct_distance_calculator(coords1, coords2):
     return round(geodesic(coords1, coords2).km, 1)

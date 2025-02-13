@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Header
 from backend.app.utils.mongo_utils import mongo_client
-from backend.app.utils.transports_utils import weight_unit_conversion_table, weight_calculator, direct_distance_calculator, horse_speed, caravan_speed, horse_capacity, caravan_capacity, Transport
+from backend.app.utils.transports_utils import weight_unit_conversion_table, direct_distance_calculator, Transport
 from fastapi.responses import JSONResponse
 
 import os
@@ -141,9 +141,7 @@ async def transport_profile(user_id: str):
         return JSONResponse(status_code=200, content={"message": "User {user_id} not found"})
     
     #Weight calculation
-    inventory = [{"name" : key, **value} for key, value in user["inventory"].items()]
-    total_weight = weight_calculator(inventory)
-    result["weight"] = total_weight
+    # result["weight"] = user["merchandise_weight"]
 
     #Distance calculation
     current_outpost = user["current_outpost_id"]
@@ -173,9 +171,14 @@ async def transport_profile(user_id: str):
             {"_id": 0, "id": 1, "latitude": 1, "longitude": 1}
         )
     )
-    connected_outposts = [{**outpost,"distance": direct_distance_calculator(current_coords, (outpost["latitude"], outpost["longitude"]))} for outpost in connected_outposts]
+    routes = [
+            {**outpost, "distance": direct_distance_calculator(current_coords, (outpost["latitude"], outpost["longitude"]))}
+            for outpost in connected_outposts
+        ]
+    result["merchandise_weight"] = user["merchandise_weight"]
+    result["routes"] = routes
 
-    return connected_outposts
+    return JSONResponse(status_code=200, content=result)
 
 # Get transport details
 @router.get("/{transport_id}")
