@@ -1,6 +1,18 @@
 from typing import List
 from geopy.distance import geodesic
+import os
 # import networkx as nx
+
+from pydantic import BaseModel
+from typing import Optional
+#import optional
+
+class Transport(BaseModel):
+    name: str
+    speed: Optional[int] = None
+    capacity: Optional[int] = None
+    base_cost_per_km: Optional[int] = None
+    edit: bool = False
 
 weight_unit_conversion_table = [
     {
@@ -85,4 +97,4 @@ def weight_calculator(inventory: List[dict]):
     return total_weight
 
 def direct_distance_calculator(coords1, coords2):
-    return geodesic(coords1, coords2).km
+    return round(geodesic(coords1, coords2).km, 1)

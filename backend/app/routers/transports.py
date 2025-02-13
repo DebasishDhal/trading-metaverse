@@ -1,12 +1,76 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Header
 from backend.app.utils.mongo_utils import mongo_client
-from backend.app.utils.transports_utils import weight_unit_conversion_table, weight_calculator, direct_distance_calculator
+from backend.app.utils.transports_utils import weight_unit_conversion_table, weight_calculator, direct_distance_calculator, horse_speed, caravan_speed, horse_capacity, caravan_capacity, Transport
 from fastapi.responses import JSONResponse
+
+import os
 
 router = APIRouter(
     prefix="/transports",
     tags=["Transports"]
 )
+
+@router.post("/add_transport_method") #Admin only
+async def add_edit_transport_method(transport: Transport, admin_password: str = Header(None)): #Last tested, 13/02/2025
+    actual_password = os.getenv("ADMIN_PASSWORD")
+
+    if admin_password != actual_password:
+        return JSONResponse(status_code=403, content={"message": "Only admins can add/edit transport methods. Go away."})
+    
+    database_name = "transports"
+    collection_name = "transport_methods"
+
+    transport_type = transport.name
+    is_it_an_edit = transport.edit
+
+    db = mongo_client[database_name]
+    if collection_name not in db.list_collection_names():
+        db.create_collection(collection_name)
+
+
+    collection = db[collection_name]
+    exists = collection.find_one({"name": transport_type})
+
+    if is_it_an_edit:
+        if not exists:
+            return JSONResponse(status_code=400, content={"message": "Transport method does not exist."})
+
+        update_fields = {k: v for k, v in transport.model_dump().items() if v is not None}
+
+        if update_fields:
+            collection.update_one({"name": transport_type}, {"$set": update_fields})
+            return JSONResponse(status_code=200, content={"message": f"Transport method {transport_type} updated successfully"})
+        else:
+            return JSONResponse(status_code=400, content={"message": "No fields to update"})
+
+    else:
+        if exists:
+            return JSONResponse(status_code=400, content={"message": "Transport method already exists. Use edit flag to update"})
+        collection.insert_one(transport.model_dump())
+        return JSONResponse(status_code=200, content={"message": f"Transport method {transport_type} added successfully"})
+
+@router.delete("/delete_transport_method") #Admin only
+async def delete_transport_method(transport_type: str, admin_password: str = Header(None)): #Last tested, 13/02/2025
+    "Deletes a transport method upon the request of an admin"
+    actual_password = os.getenv("ADMIN_PASSWORD")
+
+    if admin_password != actual_password:
+        return JSONResponse(status_code=403, content={"message": "Only admins can delete transport methods. Go away."})
+    
+    database_name = "transports"
+    collection_name = "transport_methods"
+
+    if collection_name not in mongo_client[database_name].list_collection_names():
+        return JSONResponse(status_code=404, content={"message": f"Collection {collection_name} not found in database {database_name}"})
+    
+    collection = mongo_client[database_name][collection_name]
+    exists = collection.find_one({"name": transport_type})
+
+    if not exists:
+        return JSONResponse(status_code=404, content={"message": f"Transport method {transport_type} not found. Ensure spell check."})
+
+    collection.delete_one({"name": transport_type})
+    return JSONResponse(status_code=200, content={"message": f"Transport method {transport_type} deleted successfully"})
     
 @router.get("/weight_converter_sanity_check")
 async def weight_converter_sanity_check():
@@ -44,8 +108,21 @@ async def weight_converter_sanity_check():
 
 # List all transport options
 @router.get("/")
-async def list_transport():
-    return JSONResponse(status_code=200, content={"options": ["Caravan", "Fast Horse"]})
+async def list_transport(): #Last tested. 13/02/2025
+    """Lists all transport methods available along with their details"""
+    database_name = "transports"
+    collection_name = "transport_methods"
+
+    if collection_name not in mongo_client[database_name].list_collection_names():
+        return JSONResponse(status_code=404, content={"message": f"Collection {collection_name} not found in database {database_name}"})
+    
+    collection = mongo_client[database_name][collection_name]
+
+    transports = list(collection.find({}, {"_id": 0}))
+    if not transports:
+        return JSONResponse(status_code=404, content={"message": "No transport methods found"})
+    
+    return JSONResponse(status_code=200, content={"transports": transports})
 
 @router.get("/transport_profile") #Tested. 12/02/2025 (Pre-pre-valentine's day)
 async def transport_profile(user_id: str):
