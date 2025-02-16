@@ -3,6 +3,7 @@ from backend.app.utils.mongo_utils import mongo_client
 from backend.app.utils.transports_utils import weight_unit_conversion_table, direct_distance_calculator, Transport
 from fastapi.responses import JSONResponse
 import gpxpy
+from geopy.distance import geodesic
 import os
 import pandas as pd
 
@@ -227,6 +228,7 @@ async def add_route(file_path: str, start: str, end: str, admin_password: str = 
     source_id = source_doc["id"]
     destination_id = destination_doc["id"]
 
+    point_count = 100
     if file_path.endswith(".gpx"):
         try:
             with open(file_path, "r") as f:
@@ -240,7 +242,11 @@ async def add_route(file_path: str, start: str, end: str, admin_password: str = 
                         lats.append(point.latitude)
                         lons.append(point.longitude)
 
-            point_count = 200
+            zipped_route = list(zip(lats, lons))
+            total_distance = 0
+            for i in range(1, len(zipped_route)):
+                total_distance += geodesic(zipped_route[i-1], zipped_route[i]).kilometers
+
             step = len(lats) // point_count
 
             final_lats, final_lons = [], []
@@ -275,7 +281,8 @@ async def add_route(file_path: str, start: str, end: str, admin_password: str = 
                     "source_id": source_id,
                     "destination": end,
                     "destination_id": destination_id,
-                    "route": zipped_route
+                    "route": zipped_route,
+                    "distance": round(total_distance, 1)
                 }
             )
 
@@ -293,13 +300,18 @@ async def add_route(file_path: str, start: str, end: str, admin_password: str = 
         sliced_df = df.iloc[start:end]
         data = sliced_df.to_dict(orient='records')
         zipped_route = list(zip(data["latitude"], data["longitude"]))
+    
+        total_distance = 0
+        for i in range(1, len(zipped_route)):
+            total_distance += geodesic(zipped_route[i-1], zipped_route[i]).kilometers
 
         result = routes_collection.insert_one({
             "source": start,
             "source_id": source_id,
             "destination": end,
             "destination_id": destination_id,
-            "route": zipped_route})
+            "route": zipped_route,
+            "distance": total_distance})
 
         if result.inserted_id is not None:
             return JSONResponse(status_code=201, content={"message": "Route added successfully."})
@@ -324,7 +336,6 @@ async def add_route(file_path: str, start: str, end: str, admin_password: str = 
                         lats.append(point.latitude)
                         lons.append(point.longitude)
 
-        point_count = 200
         step = len(lats) // point_count
 
         final_lats, final_lons = [], []
@@ -338,12 +349,17 @@ async def add_route(file_path: str, start: str, end: str, admin_password: str = 
         
         zipped_route = list(zip(final_lats, final_lons))
 
+        total_distance = 0
+        for i in range(1, len(zipped_route)):
+            total_distance += geodesic(zipped_route[i-1], zipped_route[i]).kilometers
+
         route = {
             "source": start,
             "source_id": source_id,
             "destination": end,
             "destination_id": destination_id,
-            "route": zipped_route
+            "route": zipped_route,
+            "distance": total_distance
         }
 
         result = routes_collection.insert_one(route)
@@ -355,3 +371,35 @@ async def add_route(file_path: str, start: str, end: str, admin_password: str = 
 
     else:
         return JSONResponse(status_code=400, content={"message": "Invalid file format"})
+        
+
+@router.post("/small_tasks_route")
+async def small_tasks(admin_password: str = Header(None)):
+
+    actual_password = os.getenv("ADMIN_PASSWORD")
+    if admin_password != actual_password:
+        return JSONResponse(status_code=403, content={"message": "Only admins can use this. Go away."})
+
+    database_name = "transports"
+    collection_name = "routes"
+
+    db = mongo_client[database_name]
+    if collection_name not in db.list_collection_names():
+        return JSONResponse(status_code=404, content={"message": f"{collection_name} Collection not found"})  # Use f-string for interpolation
+    
+    routes_collection = db[collection_name]
+
+    # For every doc, take the "route" field, calculate the distance and update the "distance" field
+    for doc in list(routes_collection.find()):
+        print("Inside loop")
+        if "route" not in doc:
+            continue
+
+        route = doc["route"]
+        total_distance = 0
+        for i in range(1, len(route)):
+            total_distance += geodesic(route[i-1], route[i]).kilometers
+        
+        routes_collection.update_one({"_id": doc["_id"]}, {"$set": {"distance": round(total_distance, 2)}})
+        
+    return JSONResponse(status_code=200, content={"message": "All routes updated successfully"})
