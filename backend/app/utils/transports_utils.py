@@ -11,7 +11,8 @@ class Transport(BaseModel):
     name: str
     speed: Optional[int] = Field(None, gt=0)
     capacity: Optional[int] = Field(None, gt=0)
-    base_cost_per_km: Optional[int] = Field(None, gt=0)
+    base_cost_per_km: Optional[float] = Field(None, gt=0)
+    base_cost_per_kg: Optional[float] = Field(None, gt=0)
     edit: bool = False
 
 weight_unit_conversion_table = [
@@ -85,3 +86,16 @@ weight_unit_conversion_table = [
 
 def direct_distance_calculator(coords1, coords2):
     return round(geodesic(coords1, coords2).km, 1)
+
+def calculate_transport_cost(distance: int, weight: int, transport_methods: List[Transport]):
+    options = []
+    for method in transport_methods:
+        cost = round(method["base_cost_per_km"] * distance + method["base_cost_per_kg"] * weight * distance, 0)
+        time = round(distance / method["speed"], 0)
+        options.append({
+            "name": method["name"],
+            "cost": cost,
+            "time": time
+        })
+    
+    return options

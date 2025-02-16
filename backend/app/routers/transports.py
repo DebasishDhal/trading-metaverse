@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Header, UploadFile, File, Form
 from backend.app.utils.mongo_utils import mongo_client
-from backend.app.utils.transports_utils import weight_unit_conversion_table, direct_distance_calculator, Transport
+from backend.app.utils.transports_utils import weight_unit_conversion_table, direct_distance_calculator, Transport, calculate_transport_cost
 from fastapi.responses import JSONResponse
 import gpxpy
 from geopy.distance import geodesic
@@ -147,38 +147,73 @@ async def transport_profile(user_id: str):
 
     #Distance calculation
     current_outpost = user["current_outpost_id"]
-    print(current_outpost)
+    # print(current_outpost)
     if current_outpost is None:
         return JSONResponse(status_code=200, content={"message": "User {user_id} has no current outpost. Choose spawn point."})
     
-    database_name = "outposts"
-    collection_name = "spawn_points"
+    database_name = "transports"
+    collection_name = "transport_methods"
 
-    db = mongo_client[database_name]
-    outpost_collection = db["spawn_points"]
+    transport_collection = mongo_client[database_name][collection_name]
+    transport_methods = list(transport_collection.find({}, {"_id": 0}))
+
+    # database_name = "outposts"
+    # collection_name = "spawn_points"
+
+    # db = mongo_client[database_name]
+    # outpost_collection = db["spawn_points"]
     # print("Total spawn points", outpost_collection.count_documents({}))
 
-    routes = outpost_collection.find_one({"id": current_outpost}, {"trade_routes": 1, "latitude": 1, "longitude": 1})
-    print(routes)
-    if not routes or "trade_routes" not in routes:
-        return JSONResponse(status_code=200, content={"message": "No trade routes found for current outpost. You are stranded."})
+    # routes = outpost_collection.find_one({"id": current_outpost}, {"trade_routes": 1, "latitude": 1, "longitude": 1})
+    # # print(routes)
+    # if not routes or "trade_routes" not in routes:
+    #     return JSONResponse(status_code=200, content={"message": "No trade routes found for current outpost. You are stranded."})
 
-    trade_routes = routes["trade_routes"]
-    current_coords = (routes["latitude"], routes["longitude"])
-    print(current_coords)
-    # print(trade_routes)
-    connected_outposts = list(
-        outpost_collection.find(
-            {"id": {"$in": trade_routes}}, 
-            {"_id": 0, "id": 1, "latitude": 1, "longitude": 1}
-        )
-    )
-    routes = [
-            {**outpost, "distance": direct_distance_calculator(current_coords, (outpost["latitude"], outpost["longitude"]))}
-            for outpost in connected_outposts
-        ]
+    # trade_routes = routes["trade_routes"]
+    # current_coords = (routes["latitude"], routes["longitude"])
+    # # print(current_coords)
+    # # print(trade_routes)
+    # connected_outposts = list(
+    #     outpost_collection.find(
+    #         {"id": {"$in": trade_routes}}, 
+    #         {"_id": 0, "id": 1, "latitude": 1, "longitude": 1}
+    #     )
+    # )
+    # routes = [
+    #         {**outpost, "distance": direct_distance_calculator(current_coords, (outpost["latitude"], outpost["longitude"]))}
+    #         for outpost in connected_outposts
+    #     ]
     result["merchandise_weight"] = user["merchandise_weight"]
+
+    database_name = "transports"
+    collection_name = "routes"
+
+    db = mongo_client[database_name]
+    collection = db[collection_name]
+
+    routes = list(collection.find(
+        {
+            "$or": [
+                {"source_id": current_outpost},
+                {"destination_id": current_outpost}
+            ]
+        },
+        {"_id": 0, "route": 0}
+    ))
+    if not routes:
+        return JSONResponse(status_code=200, content={"message": "No trade routes found for current outpost. You are stranded."})
+    
+    # routes = [route for route in routes if route["destination_id"] in routes]
+    #Invert the items for which the current outpost is the destination
+    for route in routes:
+        if current_outpost == route["destination_id"]:
+            route["source_id"], route["destination_id"] = route["destination_id"], route["source_id"]
+            route["source"], route["destination"] = route["destination"], route["source"]
+            route["source_coords"], route["destination_coords"] = route["destination_coords"], route["source_coords"]
+        route["options"] = calculate_transport_cost(route["distance"], user["merchandise_weight"], transport_methods)
+
     result["routes"] = routes
+    
 
     return JSONResponse(status_code=200, content=result)
 
@@ -242,6 +277,7 @@ async def add_route(file_path: str, start: str, end: str, admin_password: str = 
                         lats.append(point.latitude)
                         lons.append(point.longitude)
 
+            # print(len(lats))
             zipped_route = list(zip(lats, lons))
             total_distance = 0
             for i in range(1, len(zipped_route)):
@@ -258,9 +294,9 @@ async def add_route(file_path: str, start: str, end: str, admin_password: str = 
                 final_lats.append(lats[-1])
                 final_lons.append(lons[-1])
             
-            print(len(final_lats), len(final_lons))            
+            # print(len(final_lats), len(final_lons))            
 
-            print(start, end)
+            # print(start, end)
             zipped_route = list(zip(final_lats, final_lons))
 
             # Check for existing route in both directions
@@ -282,6 +318,8 @@ async def add_route(file_path: str, start: str, end: str, admin_password: str = 
                     "destination": end,
                     "destination_id": destination_id,
                     "route": zipped_route,
+                    "source_coords": [final_lats[0], final_lons[0]],
+                    "destination_coords": [final_lats[-1], final_lons[-1]],
                     "distance": round(total_distance, 1)
                 }
             )
@@ -311,6 +349,8 @@ async def add_route(file_path: str, start: str, end: str, admin_password: str = 
             "destination": end,
             "destination_id": destination_id,
             "route": zipped_route,
+            "source_coords": [final_lats[0], final_lons[0]],
+            "destination_coords": [final_lats[-1], final_lons[-1]],
             "distance": total_distance})
 
         if result.inserted_id is not None:
@@ -322,7 +362,7 @@ async def add_route(file_path: str, start: str, end: str, admin_password: str = 
 
     elif os.path.isdir(file_path):
         gpx_files = sorted([file for file in os.listdir(file_path) if file.endswith(".gpx")])
-        print(gpx_files)
+        # print(gpx_files)
 
         lats, lons = [], []
         for gpx_file in gpx_files:
@@ -336,6 +376,7 @@ async def add_route(file_path: str, start: str, end: str, admin_password: str = 
                         lats.append(point.latitude)
                         lons.append(point.longitude)
 
+        # print(len(lats))
         step = len(lats) // point_count
 
         final_lats, final_lons = [], []
@@ -359,7 +400,9 @@ async def add_route(file_path: str, start: str, end: str, admin_password: str = 
             "destination": end,
             "destination_id": destination_id,
             "route": zipped_route,
-            "distance": total_distance
+            "source_coords": [final_lats[0], final_lons[0]],
+            "destination_coords": [final_lats[-1], final_lons[-1]],
+            "distance": round(total_distance, 1)
         }
 
         result = routes_collection.insert_one(route)
@@ -391,7 +434,7 @@ async def small_tasks(admin_password: str = Header(None)):
 
     # For every doc, take the "route" field, calculate the distance and update the "distance" field
     for doc in list(routes_collection.find()):
-        print("Inside loop")
+        # print("Inside loop")
         if "route" not in doc:
             continue
 
