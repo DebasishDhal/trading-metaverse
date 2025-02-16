@@ -14,6 +14,7 @@ services:
       - DATABASE_NAME=trading_outpost
     volumes:
       - .:/app  # Mount the current directory to /app in the container
+      - /c/Users/HP/OneDrive/Desktop/projects/trading-metaverse/backend/app/utils/map_routes:/app/utils/map_routes
     depends_on:
       - mongodb-metaverse  # Ensure MongoDB starts before the backend
     networks:

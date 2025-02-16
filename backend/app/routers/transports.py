@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Header, UploadFile, File, Form
 from backend.app.utils.mongo_utils import mongo_client
 from backend.app.utils.transports_utils import weight_unit_conversion_table, direct_distance_calculator, Transport
 from fastapi.responses import JSONResponse
-
+import gpxpy
 import os
+import pandas as pd
 
 router = APIRouter(
     prefix="/transports",
@@ -184,3 +185,173 @@ async def transport_profile(user_id: str):
 @router.get("/{transport_id}")
 async def get_transport(transport_id: int):
     return JSONResponse(status_code=200, content={"transport_id": transport_id, "type": "Caravan", "fee": 100})
+
+@router.post("/add_route") #Admin only
+async def add_route(file_path: str, start: str, end: str, admin_password: str = Header(None)):
+    """Add coordinate of routes from one outpost to another. 
+    Input - relative file path of gpx file manually added from google maps
+    Output - list of coordinates for every route in MongoDB
+    Challenge - There is no direct route from Tobolsk to Hanzhou on modern google maps, I had to make two separate roads, one from Tobolsk to Mongolia, and another from Mongolia to Hanzhou."""
+
+    actual_password = os.getenv("ADMIN_PASSWORD")
+
+    if admin_password != actual_password:
+        return JSONResponse(status_code=403, content={"message": "Only admins can add routes. Go away."})
+    
+    # if not os.path.isfile(file_path):
+    #     return JSONResponse(status_code=404, content={"message":"File not found"})
+
+    database_name = "transports"
+    collection_name = "routes"
+
+    db = mongo_client[database_name]
+    if collection_name not in db.list_collection_names():
+        db.create_collection(collection_name)
+
+    routes_collection = db[collection_name]
+
+    database_name = "outposts"
+    collection_name = "spawn_points"
+
+    db = mongo_client[database_name]
+    if collection_name not in db.list_collection_names():
+        return JSONResponse(status_code=404, content={"message": "{collection_name} Collection not found"})
+    
+    outpost_collection = db[collection_name]
+    source_doc = outpost_collection.find_one({"name": start})
+    destination_doc = outpost_collection.find_one({"name": end})
+
+    if not source_doc or not destination_doc:
+        return JSONResponse(status_code=404, content={"message": "Source or destination not found"})
+    
+    source_id = source_doc["id"]
+    destination_id = destination_doc["id"]
+
+    if file_path.endswith(".gpx"):
+        try:
+            with open(file_path, "r") as f:
+                gpx = gpxpy.parse(f)
+
+            lats, lons = [], []
+
+            for track in gpx.tracks:
+                for segment in track.segments:
+                    for point in segment.points:
+                        lats.append(point.latitude)
+                        lons.append(point.longitude)
+
+            point_count = 200
+            step = len(lats) // point_count
+
+            final_lats, final_lons = [], []
+            for i in range(0, len(lats), step):
+                final_lats.append(lats[i])
+                final_lons.append(lons[i])
+
+            if lats[-1] != final_lats[-1]:
+                final_lats.append(lats[-1])
+                final_lons.append(lons[-1])
+            
+            print(len(final_lats), len(final_lons))            
+
+            print(start, end)
+            zipped_route = list(zip(final_lats, final_lons))
+
+            # Check for existing route in both directions
+            existing_route = routes_collection.find_one(
+                {"$or": [
+                    {"source": start, "destination": end},
+                    {"source": end, "destination": start}
+                ]}
+            )
+
+            if existing_route:
+                return JSONResponse(status_code=400, content={"message": "Route already exists. Cannot insert duplicate."})
+            
+            # Insert the new route
+            result = routes_collection.insert_one(
+                {
+                    "source": start,
+                    "source_id": source_id,
+                    "destination": end,
+                    "destination_id": destination_id,
+                    "route": zipped_route
+                }
+            )
+
+            if result.inserted_id is not None:
+                return JSONResponse(status_code=201, content={"message": "Route added successfully."})
+            else:
+                return JSONResponse(status_code=500, content={"message": "Failed to add route."})
+                
+        except Exception as e:
+            return JSONResponse(status_code=500, content={"message": str(e)})
+        
+    elif file_path.endswith(".csv"):
+        df = pd.read_csv(file_path)
+
+        sliced_df = df.iloc[start:end]
+        data = sliced_df.to_dict(orient='records')
+        zipped_route = list(zip(data["latitude"], data["longitude"]))
+
+        result = routes_collection.insert_one({
+            "source": start,
+            "source_id": source_id,
+            "destination": end,
+            "destination_id": destination_id,
+            "route": zipped_route})
+
+        if result.inserted_id is not None:
+            return JSONResponse(status_code=201, content={"message": "Route added successfully."})
+        else:
+            return JSONResponse(status_code=500, content={"message": "Failed to add route."})
+        
+        # collection.insert_many(data)
+
+    elif os.path.isdir(file_path):
+        gpx_files = sorted([file for file in os.listdir(file_path) if file.endswith(".gpx")])
+        print(gpx_files)
+
+        lats, lons = [], []
+        for gpx_file in gpx_files:
+            gpx_file_path = os.path.join(file_path, gpx_file)
+            with open(gpx_file_path, "r") as f:
+                gpx = gpxpy.parse(f)
+
+            for track in gpx.tracks:
+                for segment in track.segments:
+                    for point in segment.points:
+                        lats.append(point.latitude)
+                        lons.append(point.longitude)
+
+        point_count = 200
+        step = len(lats) // point_count
+
+        final_lats, final_lons = [], []
+        for i in range(0, len(lats), step):
+            final_lats.append(lats[i])
+            final_lons.append(lons[i])
+        
+        if lats[-1] != final_lats[-1]:
+            final_lats.append(lats[-1])
+            final_lons.append(lons[-1])
+        
+        zipped_route = list(zip(final_lats, final_lons))
+
+        route = {
+            "source": start,
+            "source_id": source_id,
+            "destination": end,
+            "destination_id": destination_id,
+            "route": zipped_route
+        }
+
+        result = routes_collection.insert_one(route)
+
+        if result.inserted_id is not None:
+            return JSONResponse(status_code=201, content={"message": "Route added successfully."})
+        else:
+            return JSONResponse(status_code=500, content={"message": "Failed to add route."})
+
+    else:
+        return JSONResponse(status_code=400, content={"message": "Invalid file format"})

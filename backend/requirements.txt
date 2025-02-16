@@ -8,3 +8,5 @@ passlib == 1.7.4
 pyjwt == 2.9.0
 pytest == 8.3.4
 geopy == 2.4.1
+gpxpy == 1.6.2
+pandas == 2.2.3
