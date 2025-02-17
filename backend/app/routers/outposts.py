@@ -64,10 +64,14 @@ async def fetch_spawn_points():
     db = mongo_client["outposts"]
     collection = db["spawn_points"]
 
-    spawn_points = sorted(list(collection.find({})), key=lambda x: x["id"])
-    spawn_points = [{k:v for k,v in outpost.items() if k not in ["_id"]} for outpost in spawn_points]
+    # Use MongoDB's aggregation framework to get selected fields
+    spawn_points = list(collection.find(
+        {},
+        {'_id': 0, "goods_available": 0, "goods_demanded": 0, 'trade_routes': 0}
+    ))
 
-    return JSONResponse(status_code=200, content=json.dumps(spawn_points))
+    # No need to use json.dumps(), FastAPI handles serialization automatically
+    return JSONResponse(status_code=200, content=spawn_points)
 
 @router.post("/choose_spawn_point")
 async def choose_spawn_point(username: str, spawn_id: str):
