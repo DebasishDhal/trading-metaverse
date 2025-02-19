@@ -1,15 +1,15 @@
 import React, { useState } from 'react';
-import config from '../utils/config'; 
+import { useNavigate } from 'react-router-dom';
+import config from '../utils/config';
 
 function Signup() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [message, setMessage] = useState('');
+  const navigate = useNavigate();
 
-  const handleSubmit = async (e) => {
+  const handleSignup = async (e) => {
     e.preventDefault();
-
-    console.log("Backend URL:", config.backendUrl); // Debug the backend URL
 
     try {
       const response = await fetch(`${config.backendUrl}/auth/signup`, {
@@ -24,6 +24,13 @@ function Signup() {
 
       if (response.ok) {
         setMessage(data.message);
+
+        localStorage.setItem('access_token', data.access_token);
+
+        document.cookie = `refresh_token=${data.refresh_token}; Secure; HttpOnly; Path=/;`;
+
+        // Use React Router to navigate to the dashboard
+        navigate('/landing');
       } else {
         setMessage(data.message || 'Signup failed');
       }
@@ -35,7 +42,7 @@ function Signup() {
   return (
     <div style={styles.container}>
       <h1 style={styles.title}>Trading Metaverse à la 16th century</h1>
-      <form onSubmit={handleSubmit} style={styles.form}>
+      <form onSubmit={handleSignup} style={styles.form}>
         <input
           type="text"
           placeholder="Username"

@@ -21,6 +21,7 @@ function LandingPage() {
   const [selectedSpawnPoint, setSelectedSpawnPoint] = useState(null);
   const [message, setMessage] = useState('');
 
+
   useEffect(() => {
     const fetchSpawnPoints = async () => {
       try {
