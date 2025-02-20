@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Signup from './components/Signup';
 import LandingPage from './components/LandingPage';
+import Introduction from './components/Introduction';
 
 function App() {
   return (
@@ -9,8 +10,8 @@ function App() {
       <Routes>
         <Route path="/signup" element={<Signup />} />
         <Route path="/landing" element={<LandingPage />} />
-        
-        <Route path="/" element={<Navigate to="/signup" />} />
+        <Route path="/introduction" element={<Introduction />} />
+        <Route path="/" element={<Navigate to="/introduction" />} />
       </Routes>
     </BrowserRouter>
   );

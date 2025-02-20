@@ -16,6 +16,17 @@ router = APIRouter(
 async def list_outposts():
     return {"outposts": ["Siberian Frontier", "Indian Bazar", "Arab Souk"]}
 
+@router.get("/route_coordinates")
+async def route_coordinates():
+    database_name = "transports"
+    collection_name = "routes"
+
+    db = mongo_client[database_name]
+    collection = db[collection_name]
+
+    routes = list(collection.find({}, {"_id": 0}))
+
+    return JSONResponse(status_code=200, content=routes)
 
 # Get details of a specific outpost
 @router.get("/{outpost_id}")
