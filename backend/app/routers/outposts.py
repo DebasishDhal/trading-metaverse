@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
-from backend.app.utils.users_utils import UserSignupSchema, SpawnPoint
+from backend.app.utils.outposts_utils import SpawnPoint, FetchSpawnPoint, DeleteSpawnPoint
 from backend.app.utils.mongo_utils import mongo_client
 
 import os, json, random, datetime
@@ -61,6 +61,7 @@ async def update_spawn_point(spawn_id:str, spawn_point:dict, admin_password: str
 
 @router.post("/fetch_spawn_points")
 async def fetch_spawn_points():
+    print("Inside /outposts/fetch_spawn_points")
     db = mongo_client["outposts"]
     collection = db["spawn_points"]
 
@@ -74,38 +75,47 @@ async def fetch_spawn_points():
     return JSONResponse(status_code=200, content=spawn_points)
 
 @router.post("/choose_spawn_point")
-async def choose_spawn_point(username: str, spawn_id: str):
-    db_user = mongo_client["users"]
-    db_outpost = mongo_client["outposts"]
-    user_collection = db_user["metaverse_users"]
-    spawn_collection = db_outpost["spawn_points"]
+async def choose_spawn_point(data: FetchSpawnPoint):
+    print("Inside /outposts/choose_spawn_point")
+    username = data.username
+    spawn_id = data.spawn_id
+    try:
+        db_user = mongo_client["users"]
+        db_outpost = mongo_client["outposts"]
+        user_collection = db_user["metaverse_users"]
+        spawn_collection = db_outpost["spawn_points"]
 
-    # Check if spawn point exists
-    existing_spawn_point = spawn_collection.find_one({"id": spawn_id})
-    if not existing_spawn_point:
-        return JSONResponse(status_code=404, content={"message": "Spawn point not found"})
+        # Check if spawn point exists
+        existing_spawn_point = spawn_collection.find_one({"id": spawn_id})
+        if not existing_spawn_point:
+            return JSONResponse(status_code=404, content={"message": "Spawn point not found"})
+        
+        # Check if user exists
+        existing_user = user_collection.find_one({"username": username})
+        if not existing_user:
+            return JSONResponse(status_code=404, content={"message": "User not found"})
+
+        # Check if user has already chosen a spawn point
+        if existing_user.get("chose_spawn_already"):
+            return JSONResponse(status_code=400, content={"message": "User has already chosen a spawn point. Use transports to move to the chosen spawn point."})
+
+        bonus_amount = existing_spawn_point.get("gold_bonus", 0)
+        time = datetime.datetime.now()
+        user_collection.update_one({"username": username}, {"$set": {"spawn_outpost_id": spawn_id, "current_outpost_id": spawn_id,"chose_spawn_already": True, "money": bonus_amount, "merchandise_weight": 0,"updated_at": time}})
+
+        return JSONResponse(status_code=200, content={"message": "Spawn point chosen"})
     
-    # Check if user exists
-    existing_user = user_collection.find_one({"username": username})
-    if not existing_user:
-        return JSONResponse(status_code=404, content={"message": "User not found"})
-
-    # Check if user has already chosen a spawn point
-    if existing_user.get("chose_spawn_already"):
-        return JSONResponse(status_code=400, content={"message": "User has already chosen a spawn point. Use transports to move to the chosen spawn point."})
-
-    bonus_amount = existing_spawn_point.get("gold_bonus", 0)
-    time = datetime.datetime.now()
-    user_collection.update_one({"username": username}, {"$set": {"spawn_outpost_id": spawn_id, "current_outpost_id": spawn_id,"chose_spawn_already": True, "money": bonus_amount, "merchandise_weight": 0,"updated_at": time}})
-
-    return JSONResponse(status_code=200, content={"message": "Spawn point chosen"})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"message": str(e)})
 
 @router.post("/delete_spawn_point")
-async def delete_spawn_point(spawn_id: str, admin_password: str):
+async def delete_spawn_point(request: DeleteSpawnPoint):
     real_admin_password = os.getenv("ADMIN_PASSWORD")
-    if admin_password != real_admin_password:
+    if request.admin_password != real_admin_password:
         return JSONResponse(status_code=403, content={"message": "Only admins can delete spawn points"})
     
+    spawn_id = request.spawn_id
+
     db_user = mongo_client["users"]
     db_outpost = mongo_client["outposts"]
     user_collection = db_user["metaverse_users"]

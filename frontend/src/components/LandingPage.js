@@ -49,9 +49,41 @@ function LandingPage() {
     fetchSpawnPoints();
   }, []);
 
-  const handleSpawnPointSelection = (spawnPoint) => {
+  const handleSpawnPointSelection = async (spawnPoint) => {
     setSelectedSpawnPoint(spawnPoint);
     setMessage(`You have selected: ${spawnPoint.name}`);
+    //Read the username from the JWT token and get username out of it
+
+    const jwt = localStorage.getItem('access_token');
+    const payload = jwt.split('.')[1];
+    const decodedPayload = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
+
+    const user_name = decodedPayload.sub;
+    console.log(user_name, spawnPoint.id); //Successful
+    try{
+      const response = await fetch(`${config.backendUrl}/outposts/choose_spawn_point`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ username: user_name ,spawn_id: String(spawnPoint.id) }),
+      });
+
+      if (response.ok) {
+        console.log('Spawn Point Selected:', spawnPoint.name);
+        setMessage(`You have selected: ${spawnPoint.name}`);
+      } else {
+        console.log('Failed to select spawn point:', response);
+        setMessage('Failed to select spawn point');
+      }  
+    }
+
+
+    catch (error) {
+      console.error('Error selecting spawn point:', error);
+      setMessage('An error occurred while selecting spawn point');
+    }
+    
   };
 
   return (
@@ -84,6 +116,9 @@ function LandingPage() {
               <button onClick={() => handleSpawnPointSelection(spawnPoint)} style={styles.button}>
                 <strong>{spawnPoint.name}</strong>
               </button>
+              {/* <button onClick={() => handleSpawnPointSelection(spawnPoint)} style={styles.button}>
+                <strong>{spawnPoint.name}</strong>
+              </button> */}
               <div style={styles.details}>
                 <p><strong>Description:</strong> {spawnPoint.description}</p>
                 <p><strong>Culture:</strong> {spawnPoint.culture}</p>
