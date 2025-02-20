@@ -2,6 +2,7 @@ from passlib.context import CryptContext
 from datetime import datetime, timedelta
 import jwt, os
 from dotenv import load_dotenv
+from pydantic import BaseModel, Field
 
 # Password hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -41,3 +42,6 @@ def decode_token(token: str, secret_key: str):
         return None  
     except jwt.InvalidTokenError:
         return None 
+
+class RefreshToken(BaseModel):
+    access_token : str = Field

@@ -7,7 +7,8 @@ from backend.app.utils.security_utils import (
     verify_password,
     create_access_token,
     create_refresh_token,
-    decode_token
+    decode_token,
+    RefreshToken
 )
 from fastapi.responses import JSONResponse
 
@@ -99,8 +100,9 @@ def user_login(data: UserLoginSchema):
 
 
 @router.post("/refresh-token")
-async def refresh_token(refresh_token: str):
+async def refresh_token(AccessTokenRequest: RefreshToken):    
     # Decode the refresh token
+    refresh_token = AccessTokenRequest.access_token
     payload = decode_token(refresh_token, secret_key="your_refresh_secret_key")
     if not payload:
         return JSONResponse(status_code=401, detail="Invalid or expired refresh token")
