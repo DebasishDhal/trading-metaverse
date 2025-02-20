@@ -65,7 +65,11 @@ async def create_user(user: UserSignupSchema): #username, password, admin = Fals
 
     collection.insert_one(user_dict)
 
-    return JSONResponse(status_code=200, content={"message": f"User created successfully with ID {user_id}"})
+    return JSONResponse(status_code=200, content={
+                                                "message": f"User created successfully with ID {user_id}",
+                                                "refresh_token": refresh_token,
+                                                "access_token": access_token
+                                                })
 
 @router.post("/login")
 def user_login(data: UserLoginSchema):
