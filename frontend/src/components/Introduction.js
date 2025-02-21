@@ -173,9 +173,16 @@ const styles = {
     textDecoration: "none",
     color: "white",
     backgroundColor: "#3498db",
-    padding: "8px 16px",
+    padding: "2px 5px",  // Keep a small padding
     borderRadius: "5px",
     fontWeight: "bold",
+    fontSize: "1.1rem",  // Reduce font size
+    lineHeight: "1",
+    height: "20px",  // Explicit height
+    display: "flex",
+    alignItems: "center",  // Ensure text is centered
+    justifyContent: "center",
+    margin: "0"
   },
   description: {
     textAlign: "center",
